@@ -185,7 +185,30 @@ def handle_select_action(update: Update, context: CallbackContext):
         )
         return SELECT_ACTION
     elif response == "select_subscript":
-        return ConversationHandler.END
+        subscriptions = Subscription.objects.filter(owner=context.user_data["db_object"], paid_until__gt=date.today())
+        if not subscriptions.count():
+            query.edit_message_text(text="У Вас нет активных подписок")
+            ask_main_action(update, context)
+            return SELECT_ACTION
+
+        button_list = [[]]
+        row = 0
+        for subscription in subscriptions:
+            if len(button_list[row]) >= 2:
+                row += 1
+                button_list.append([])
+            button_list[row].append(
+                InlineKeyboardButton(f"{subscription.preferences.type} до {subscription.paid_until}",
+                                    callback_data=f"subscription_{subscription.id}"))
+        reply_markup = InlineKeyboardMarkup(button_list)
+        query.edit_message_text(text=f"Ваши активные подписки", reply_markup=reply_markup)
+        return SELECT_ACTION
+    elif response[:12] == "subscription":
+        subscript_id = response.split("_")[1]
+        subscription = Subscription.objects.get(pk=subscript_id)
+        query.edit_message_text(text="# Здесь будет рецепт")
+        ask_main_action(update, context)
+        return SELECT_ACTION
     elif response[:6] == "period":
         context.chat_data["subscript_period"] = int(response[7:])
         query.edit_message_text(text=f"Подписка на {response[7:]} мес.")
@@ -219,7 +242,7 @@ def add_months(date: date, months: int) -> date:
 def save_subscription(context: CallbackContext):
     user = context.user_data
     subscript = context.chat_data
-    subscription = Subscription.objects.create(
+    Subscription.objects.create(
         owner=user["db_object"],
         register_date=date.today(),
         paid_until=add_months(date.today(), subscript["subscript_period"]),
