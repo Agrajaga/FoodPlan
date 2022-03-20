@@ -1,21 +1,19 @@
 import calendar
-import datetime
 import logging
 import os
 from datetime import date, timedelta
-import django
 
-from django.conf import settings
+import phonenumbers
 from django.core.management.base import BaseCommand
 from dotenv import load_dotenv
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
                       Update)
-import telegram
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, ConversationHandler, Filters,
                           MessageHandler, Updater)
-from tg_food_plan_bot.models import Customer, Ingredient, Preference, Recipe, RecipeIngredient, Subscription
+from tg_food_plan_bot.models import (Customer, Preference, Recipe,
+                                     RecipeIngredient, Subscription)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -134,11 +132,13 @@ def share_contact(update: Update, context: CallbackContext):
 
 
 def get_phone(update: Update, context: CallbackContext):
-    if not update.message.text:  # todo добавить проверку валидности номера
+    text = update.message.text
+    is_phone = phonenumbers.is_valid_number(phonenumbers.parse(text, "IN"))
+    if not is_phone:
         ask_phone(update, context)
         return INPUT_PHONE
 
-    context.user_data["phone_number"] = update.message.text
+    context.user_data["phone_number"] = text
     finish_registration(update, context)
     ask_main_action(update, context)
     return SELECT_ACTION
@@ -270,14 +270,15 @@ def save_subscription(context: CallbackContext):
 
 
 def get_persons(update: Update, context: CallbackContext):
-    if not update.message.text:  # todo добавить проверку валидности
+    persons = update.message.text
+    if not persons or not persons.isnumeric():
         context.bot.send_message(
             chat_id=update.effective_chat.id,
             text="Напишите число персон"
         )
         return INPUT_PERSONS
 
-    context.chat_data["subscript_persons"] = int(update.message.text)
+    context.chat_data["subscript_persons"] = int(persons)
     text = f"Завершение оформления"
     button_list = [
         [
