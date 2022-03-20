@@ -60,7 +60,7 @@ class Ingredient(models.Model):
 class Recipe(models.Model):
     name = models.CharField(max_length=30, verbose_name="Название блюда")
     description = models.TextField()
-    image = models.ImageField()
+    image = models.ImageField(null=True, blank=True)
     preferences = models.ManyToManyField(
         Preference,
         through="RecipeClassificator",
