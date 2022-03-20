@@ -3,6 +3,7 @@ import datetime
 import logging
 import os
 from datetime import date, timedelta
+import django
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -10,10 +11,11 @@ from dotenv import load_dotenv
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
                       Update)
+import telegram
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, ConversationHandler, Filters,
                           MessageHandler, Updater)
-from tg_food_plan_bot.models import Customer, Preference, Subscription
+from tg_food_plan_bot.models import Customer, Ingredient, Preference, Recipe, RecipeIngredient, Subscription
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -185,7 +187,8 @@ def handle_select_action(update: Update, context: CallbackContext):
         )
         return SELECT_ACTION
     elif response == "select_subscript":
-        subscriptions = Subscription.objects.filter(owner=context.user_data["db_object"], paid_until__gt=date.today())
+        subscriptions = Subscription.objects.filter(
+            owner=context.user_data["db_object"], paid_until__gt=date.today())
         if not subscriptions.count():
             query.edit_message_text(text="У Вас нет активных подписок")
             ask_main_action(update, context)
@@ -199,14 +202,29 @@ def handle_select_action(update: Update, context: CallbackContext):
                 button_list.append([])
             button_list[row].append(
                 InlineKeyboardButton(f"{subscription.preferences.type} до {subscription.paid_until}",
-                                    callback_data=f"subscription_{subscription.id}"))
+                                     callback_data=f"subscription_{subscription.id}"))
         reply_markup = InlineKeyboardMarkup(button_list)
-        query.edit_message_text(text=f"Ваши активные подписки", reply_markup=reply_markup)
+        query.edit_message_text(
+            text=f"Ваши активные подписки", reply_markup=reply_markup)
         return SELECT_ACTION
     elif response[:12] == "subscription":
         subscript_id = response.split("_")[1]
         subscription = Subscription.objects.get(pk=subscript_id)
-        query.edit_message_text(text="# Здесь будет рецепт")
+        recipe = Recipe.objects.filter(
+            preferences=subscription.preferences).order_by('?')[0]
+        query.edit_message_text(text=recipe.name)
+        context.bot.send_photo(
+            chat_id=update.effective_chat.id, photo=open(recipe.image.path, "rb"))
+        ingredients = RecipeIngredient.objects.filter(recipe=recipe)
+        ingredients_list = ""
+        for ingredient in ingredients:
+            ingredients_list += f"{ingredient.ingredient.name} - {ingredient.ingredient_amount * subscription.person_amount} {ingredient.ingredient_measure}\n"
+        if ingredients_list:
+            text = f"Список ингредиентов: \n{ingredients_list}"
+            context.bot.send_message(
+                chat_id=update.effective_chat.id, text=text)
+        context.bot.send_message(
+            chat_id=update.effective_chat.id, text=recipe.description)
         ask_main_action(update, context)
         return SELECT_ACTION
     elif response[:6] == "period":
