@@ -1,5 +1,8 @@
+import calendar
+import datetime
 import logging
 import os
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -10,7 +13,7 @@ from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
 from telegram.ext import (CallbackContext, CallbackQueryHandler,
                           CommandHandler, ConversationHandler, Filters,
                           MessageHandler, Updater)
-from tg_food_plan_bot.models import Customer
+from tg_food_plan_bot.models import Customer, Preference, Subscription
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -197,17 +200,32 @@ def handle_select_action(update: Update, context: CallbackContext):
         return INPUT_PERSONS
     elif response == "subscript_pay":
         save_subscription(context)
+        query.edit_message_text(text="Подписка оформлена")
         ask_main_action(update, context)
         return SELECT_ACTION
     elif response == "subscript_cancel":
-        context.bot.send_message(
-            chat_id=update.effective_chat.id, text="Оформление подписки отменено")
+        query.edit_message_text(text="Оформление подписки отменено")
         ask_main_action(update, context)
         return SELECT_ACTION
 
 
+def add_months(date: date, months: int) -> date:
+    for _ in range(months):
+        days = calendar.monthrange(date.year, date.month)[1]
+        date += timedelta(days=days)
+    return date
+
+
 def save_subscription(context: CallbackContext):
-    pass
+    user = context.user_data
+    subscript = context.chat_data
+    subscription = Subscription.objects.create(
+        owner=user["db_object"],
+        register_date=date.today(),
+        paid_until=add_months(date.today(), subscript["subscript_period"]),
+        person_amount=subscript["subscript_persons"],
+        preferences=Preference.objects.get(pk=subscript["subscript_menu_id"])
+    )
 
 
 def get_persons(update: Update, context: CallbackContext):
@@ -238,25 +256,21 @@ def get_persons(update: Update, context: CallbackContext):
 
 
 def ask_menu_type(update: Update, context: CallbackContext):
-    text = f"Выберите тип меню"
-    button_list = [
-        [
-            InlineKeyboardButton("Классическое",
-                                 callback_data="menu_1_Классическое"),
-            InlineKeyboardButton("Вегетарианское",
-                                 callback_data="menu_2_Вегетарианское"),
-        ],
-        [
-            InlineKeyboardButton("Низкоуглеводное",
-                                 callback_data="menu_3_Низкоуглеводное"),
-            InlineKeyboardButton("Кето",
-                                 callback_data="menu_4_Кето"),
-        ]
-    ]
+    preferences = Preference.objects.all()
+    button_list = [[]]
+    row = 0
+    for preference in preferences:
+        if len(button_list[row]) >= 2:
+            row += 1
+            button_list.append([])
+        button_list[row].append(
+            InlineKeyboardButton(preference.type,
+                                 callback_data=f"menu_{preference.id}_{preference.type}")
+        )
     reply_markup = InlineKeyboardMarkup(button_list)
     context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=text,
+        text="Выберите тип меню",
         reply_markup=reply_markup
     )
 
